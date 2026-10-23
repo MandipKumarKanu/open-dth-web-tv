@@ -631,6 +631,11 @@ export function HomeScreen({
         className={`tile ${zone === "tile" && tileIndex === i ? "focused" : ""}`}
         style={{ width: cellW, height: cardH + 40 }}
         onClick={() => {
+          // Touch devices do not have hover. A single tap should tune immediately.
+          if (isMobile || (window.matchMedia("(hover: none)").matches && window.matchMedia("(pointer: coarse)").matches)) {
+            play(i);
+            return;
+          }
           if (zone === "tile" && tileIndex === i) play(i);
           else focusTile(i);
         }}
