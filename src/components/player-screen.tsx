@@ -307,7 +307,7 @@ export function PlayerScreen({
             rememberWorkingStream(ch, url);
           }
           if (hls.audioTracks.length > 0) {
-            setAudioTracks(hls.audioTracks.map((t) => ({ id: String(t.id), lang: t.lang ?? "", name: t.name ?? "" })));
+            setAudioTracks(hls.audioTracks.map((t, i) => ({ id: String(i), lang: t.lang ?? "", name: t.name ?? "" })));
             setSelectedAudioTrackId(String(hls.audioTrack));
           }
           addRecent(ch);
@@ -320,7 +320,7 @@ export function PlayerScreen({
         hls.on(Hls.Events.FRAG_CHANGED, () => setBuffering(false));
         hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, (_e, data) => {
           if (gen !== genRef.current) return;
-          setAudioTracks(data.audioTracks.map((t) => ({ id: String(t.id), lang: t.lang ?? "", name: t.name ?? "" })));
+          setAudioTracks(data.audioTracks.map((t, i) => ({ id: String(i), lang: t.lang ?? "", name: t.name ?? "" })));
           setSelectedAudioTrackId(String(hls.audioTrack));
         });
         hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, (_e, data) => {
