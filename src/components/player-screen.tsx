@@ -994,7 +994,7 @@ export function PlayerScreen({
         ref={videoRef}
         className="player-video"
         style={{
-          objectFit: playerOrientation === "portrait" ? "contain" : fit.objectFit,
+          objectFit: playerOrientation === "portrait" && isMobileWidth ? "contain" : fit.objectFit,
           width: "100%",
           height: "100%",
           background: "#000",
