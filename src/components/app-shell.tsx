@@ -39,6 +39,26 @@ export function App() {
   }, [view.screen]);
 
   const openPlayer = (req: PlayRequest) => {
+    // A channel tap is a user gesture, so request fullscreen here before the
+    // player mounts. Mobile browsers generally require fullscreen + a gesture
+    // before they allow the Screen Orientation API to lock to landscape.
+    if (window.matchMedia("(max-width: 719px)").matches) {
+      const enterLandscape = async () => {
+        try {
+          if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+            await document.documentElement.requestFullscreen();
+          }
+          if (screen.orientation?.lock) {
+            await screen.orientation.lock("landscape");
+          }
+        } catch {
+          // Orientation locking is not supported in every mobile browser.
+          // Playback still works and the user can rotate their device manually.
+        }
+      };
+      void enterLandscape();
+    }
+
     window.history.pushState({ openDthApp: true, screen: "player" }, "", window.location.href);
     viewRef.current = "player";
     setView({ screen: "player", request: req });

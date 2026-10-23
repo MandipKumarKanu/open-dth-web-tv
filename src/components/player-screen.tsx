@@ -168,6 +168,20 @@ export function PlayerScreen({
     return () => window.removeEventListener("resize", update);
   }, []);
 
+  // Release the mobile landscape lock and fullscreen mode when the player closes.
+  useEffect(() => {
+    return () => {
+      try {
+        screen.orientation?.unlock?.();
+      } catch {
+        // Ignore browsers without orientation-lock support.
+      }
+      if (document.fullscreenElement && document.exitFullscreen) {
+        void document.exitFullscreen().catch(() => {});
+      }
+    };
+  }, []);
+
   const activeListRef = useRef(activeChannels);
   useEffect(() => {
     activeListRef.current = activeChannels;
