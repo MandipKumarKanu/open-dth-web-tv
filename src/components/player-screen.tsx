@@ -528,10 +528,12 @@ export function PlayerScreen({
       streamIdxRef.current = pref;
       setStreamIdx(pref);
       setShowInfo(true);
+      // The index/streamIdx effect owns player initialization. Avoid opening
+      // here too, or the same channel can create two HLS instances.
       if (zapTimerRef.current) window.clearTimeout(zapTimerRef.current);
-      zapTimerRef.current = window.setTimeout(() => open(true), 350);
+      zapTimerRef.current = null;
     },
-    [getPreferredStreamIndex, open]
+    [getPreferredStreamIndex]
   );
 
   const tuneToChannel = useCallback(
@@ -566,9 +568,9 @@ export function PlayerScreen({
       setShowControls(false);
       if (timelineOpenRef.current) setShowTimelineGuide(false);
       if (guideOpenRef.current) setShowGuide(false);
-      open(true);
+      // The index/streamIdx effect opens the newly selected channel once.
     },
-    [getPreferredStreamIndex, open]
+    [getPreferredStreamIndex]
   );
 
   // ------------------------------------------------ overlays
@@ -645,9 +647,10 @@ export function PlayerScreen({
         showQualityNotice(`Quality locked to ${q}`);
         setSelectedQuality(q);
       }
-      open(true);
+      // The [index, streamIdx] effect handles stream initialization. This
+      // avoids racing a direct open() against effect cleanup.
     },
-    [open, rememberWorkingStream, showQualityNotice]
+    [rememberWorkingStream, showQualityNotice]
   );
 
   const [searchOpen, setSearchOpen] = useState(false);
