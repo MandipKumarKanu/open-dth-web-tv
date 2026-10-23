@@ -12,6 +12,8 @@ import {
   AudioLines,
   Circle,
   ChevronsUpDown,
+  Smartphone,
+  Monitor,
   List,
   ListVideo,
   Mic,
@@ -104,6 +106,7 @@ export function PlayerScreen({
   const [isMobileWidth, setIsMobileWidth] = useState(false);
   const [videoW, setVideoW] = useState(16);
   const [videoH, setVideoH] = useState(9);
+  const [playerOrientation, setPlayerOrientation] = useState<"portrait" | "landscape">("portrait");
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -677,6 +680,22 @@ export function PlayerScreen({
     [audioTracks, setPreferredAudioLanguage, showQualityNotice]
   );
 
+  const togglePlayerOrientation = useCallback(async () => {
+    const next = playerOrientation === "portrait" ? "landscape" : "portrait";
+    setPlayerOrientation(next);
+    try {
+      const orientation = screen.orientation as ScreenOrientation & {
+        lock?: (value: "portrait" | "landscape") => Promise<void>;
+      };
+      if (document.fullscreenElement && typeof orientation?.lock === "function") {
+        await orientation.lock(next);
+      }
+    } catch {
+      // CSS layout still switches when browser orientation locking is unavailable.
+    }
+    showQualityNotice(`Player layout: ${next}`);
+  }, [playerOrientation, showQualityNotice]);
+
   const toggleScreenFit = useCallback(() => {
     const next = cycleScreenFit();
     showQualityNotice(`Screen Fit: ${screenFitMeta[next].label} (${screenFitMeta[next].description})`);
@@ -970,12 +989,12 @@ export function PlayerScreen({
   const fit = screenFitMeta[screenFit];
 
   return (
-    <div className="player-root">
+    <div className={`player-root player-orientation-${playerOrientation}`}>
       <video
         ref={videoRef}
         className="player-video"
         style={{
-          objectFit: fit.objectFit,
+          objectFit: playerOrientation === "portrait" ? "contain" : fit.objectFit,
           width: "100%",
           height: "100%",
           background: "#000",
@@ -1123,6 +1142,19 @@ export function PlayerScreen({
               LIVE
             </span>
             <span className="pc-channel-name">{current.name}</span>
+            <button
+              type="button"
+              className="pc-audio-pill pc-orientation-toggle"
+              onClick={() => {
+                void togglePlayerOrientation();
+                resetControlsTimer();
+              }}
+              title="Switch player between portrait and landscape"
+              aria-label={`Switch to ${playerOrientation === "portrait" ? "landscape" : "portrait"} player`}
+            >
+              {playerOrientation === "portrait" ? <Monitor size={15} /> : <Smartphone size={15} />}
+              <span>{playerOrientation === "portrait" ? "PORTRAIT" : "LANDSCAPE"}</span>
+            </button>
             <div className="pib-spacer" />
             <span className="pc-quality-label">
               <SlidersHorizontal size={16} color="rgba(255,255,255,0.7)" />
