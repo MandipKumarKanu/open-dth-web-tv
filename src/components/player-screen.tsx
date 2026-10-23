@@ -1142,19 +1142,6 @@ export function PlayerScreen({
               LIVE
             </span>
             <span className="pc-channel-name">{current.name}</span>
-            <button
-              type="button"
-              className="pc-audio-pill pc-orientation-toggle"
-              onClick={() => {
-                void togglePlayerOrientation();
-                resetControlsTimer();
-              }}
-              title="Switch player between portrait and landscape"
-              aria-label={`Switch to ${playerOrientation === "portrait" ? "landscape" : "portrait"} player`}
-            >
-              {playerOrientation === "portrait" ? <Monitor size={15} /> : <Smartphone size={15} />}
-              <span>{playerOrientation === "portrait" ? "PORTRAIT" : "LANDSCAPE"}</span>
-            </button>
             <div className="pib-spacer" />
             <span className="pc-quality-label">
               <SlidersHorizontal size={16} color="rgba(255,255,255,0.7)" />
@@ -1228,6 +1215,16 @@ export function PlayerScreen({
               focused={controlSection === "epgGuide"}
               focusedColor="#6366f1"
               onClick={() => openTimelineGuide()}
+            />
+            <ControlHub
+              icon={playerOrientation === "portrait" ? <Monitor size={38} /> : <Smartphone size={38} />}
+              label={playerOrientation === "portrait" ? "LANDSCAPE" : "PORTRAIT"}
+              focused={false}
+              focusedColor="#fff"
+              onClick={() => {
+                void togglePlayerOrientation();
+                resetControlsTimer();
+              }}
             />
             <ControlHub
               icon={<AspectRatioIcon />}
