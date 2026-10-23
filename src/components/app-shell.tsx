@@ -48,8 +48,14 @@ export function App() {
           if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
             await document.documentElement.requestFullscreen();
           }
-          if (screen.orientation?.lock) {
-            await screen.orientation.lock("landscape");
+
+          // TypeScript's DOM definitions omit ScreenOrientation.lock(), even
+          // though supported browsers implement it. Keep the call feature-detected.
+          const orientation = screen.orientation as ScreenOrientation & {
+            lock?: (orientation: "landscape") => Promise<void>;
+          };
+          if (typeof orientation?.lock === "function") {
+            await orientation.lock("landscape");
           }
         } catch {
           // Orientation locking is not supported in every mobile browser.
