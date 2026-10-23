@@ -3,10 +3,32 @@
 // Ported from lib/widgets/tv_search_dialog.dart: TV-style virtual keyboard on
 // the left, 3-column result grid on the right, plus a mobile text layout.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Mic, Search as SearchIcon, Tv, X } from "lucide-react";
 import { type Channel } from "@/lib/live-tv";
 import { ChannelIcon } from "./channel-icon";
+
+type SpeechRecognitionResultEvent = Event & {
+  results: SpeechRecognitionResultList;
+};
+
+type SpeechRecognitionInstance = {
+  lang: string;
+  interimResults: boolean;
+  maxAlternatives: number;
+  onresult: ((event: SpeechRecognitionResultEvent) => void) | null;
+  onerror: ((event: Event) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
+
+type SpeechWindow = Window & {
+  SpeechRecognition?: SpeechRecognitionConstructor;
+  webkitSpeechRecognition?: SpeechRecognitionConstructor;
+};
 
 const KEYS: string[][] = [
   ["A", "B", "C", "D", "E", "F"],
@@ -34,20 +56,79 @@ export function TvSearchDialog({
   const [kbCol, setKbCol] = useState(0);
   const [focusedResultIdx, setFocusedResultIdx] = useState(0);
   const [inResults, setInResults] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [micError, setMicError] = useState<string | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
+  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
 
   const results = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = query.trim().toLocaleLowerCase();
     if (!q) return [] as Channel[];
     return allChannels
       .filter(
         (c) =>
-          c.name.toLowerCase().includes(q) ||
-          c.category.toLowerCase().includes(q) ||
-          c.tvgId.toLowerCase().includes(q)
+          [c.name, c.category, c.tvgId]
+            .filter(Boolean)
+            .some((value) => value.toLocaleLowerCase().includes(q))
       )
       .slice(0, 300);
   }, [query, allChannels]);
+
+  const updateQuery = useCallback((next: string) => {
+    setQuery(next);
+    setInResults(false);
+    setFocusedResultIdx(0);
+  }, []);
+
+  const startVoiceSearch = useCallback(() => {
+    if (isListening) {
+      recognitionRef.current?.stop();
+      return;
+    }
+
+    const SpeechRecognition =
+      (window as SpeechWindow).SpeechRecognition ??
+      (window as SpeechWindow).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setMicError("Voice search is not supported in this browser");
+      return;
+    }
+
+    recognitionRef.current?.stop();
+    const recognition = new SpeechRecognition();
+    recognition.lang = "en-IN";
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    recognition.onresult = (event) => {
+      const transcript = event.results[0]?.[0]?.transcript?.trim();
+      if (transcript) updateQuery(transcript);
+      setMicError(null);
+    };
+    recognition.onerror = (event) => {
+      const error = event as Event & { error?: string };
+      setMicError(
+        error.error === "not-allowed"
+          ? "Microphone permission was blocked"
+          : "Could not hear that, please try again"
+      );
+      setIsListening(false);
+    };
+    recognition.onend = () => {
+      setIsListening(false);
+      recognitionRef.current = null;
+    };
+    recognitionRef.current = recognition;
+    setMicError(null);
+    setIsListening(true);
+    try {
+      recognition.start();
+    } catch {
+      setIsListening(false);
+      setMicError("Could not start the microphone");
+    }
+  }, [isListening, updateQuery]);
+
+  useEffect(() => () => recognitionRef.current?.stop(), []);
 
   useEffect(() => {
     if (focusedResultIdx >= results.length) {
@@ -72,12 +153,15 @@ export function TvSearchDialog({
 
   // ------------------------------------------------ TV layout
   const onKeyPress = (key: string) => {
-    if (key === "MIC") return; // voice search needs the native mic; kept visible for UI parity
-    if (key === "SPACE") setQuery((q) => q + " ");
-    else if (key === "DEL") setQuery((q) => (q.length > 0 ? q.slice(0, -1) : q));
-    else if (key === "CLEAR") setQuery("");
+    if (key === "MIC") {
+      startVoiceSearch();
+      return;
+    }
+    if (key === "SPACE") updateQuery(`${query} `);
+    else if (key === "DEL") updateQuery(query.slice(0, -1));
+    else if (key === "CLEAR") updateQuery("");
     else if (key === "CLOSE") onClose();
-    else setQuery((q) => q + key);
+    else updateQuery(`${query}${key}`);
   };
 
   // ------------------------------------------------ TV layout
@@ -88,9 +172,7 @@ export function TvSearchDialog({
       // physical typing support (voice remotes, USB keyboards)
       if (ch && ch.length === 1 && ch.codePointAt(0)! >= 32 && ch.codePointAt(0)! <= 126) {
         e.preventDefault();
-        if (ch === " ") setQuery((q) => q + " ");
-        else if (ch === "Escape") return;
-        else setQuery((q) => q + ch.toUpperCase());
+        updateQuery(`${query}${ch === " " ? " " : ch.toLocaleUpperCase()}`);
         return;
       }
       if (ch === "F5") {
@@ -99,7 +181,7 @@ export function TvSearchDialog({
       }
       if (ch === "Backspace") {
         e.preventDefault();
-        setQuery((q) => (q.length > 0 ? q.slice(0, -1) : q));
+        updateQuery(query.slice(0, -1));
         return;
       }
       if (ch === "Escape") {
@@ -164,7 +246,7 @@ export function TvSearchDialog({
 
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [kbRow, kbCol, inResults, focusedResultIdx, results, onChannelSelect, onClose, onKeyPress]);
+  }, [kbRow, kbCol, inResults, focusedResultIdx, results, query, onChannelSelect, onClose, onKeyPress, updateQuery]);
 
   // ------------------------------------------------ mobile layout
   if (isMobile) {
@@ -184,14 +266,23 @@ export function TvSearchDialog({
               autoFocus
               value={query}
               placeholder="Name, category or channel ID"
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => updateQuery(e.target.value)}
             />
+            <button
+              type="button"
+              className={`search-mic-button ${isListening ? "listening" : ""}`}
+              onClick={startVoiceSearch}
+              aria-label={isListening ? "Stop voice search" : "Start voice search"}
+            >
+              <Mic size={17} />
+            </button>
             {query && (
               <button type="button" onClick={() => setQuery("")} aria-label="Clear">
                 <X size={16} color="rgba(255,255,255,0.54)" />
               </button>
             )}
           </div>
+          {micError && <div className="search-mic-error">{micError}</div>}
           <div className="search-mobile-results">
             {query.trim().length === 0 ? (
               <div className="center-empty">
@@ -233,6 +324,7 @@ export function TvSearchDialog({
           <div className="search-tv-badge">
             <SearchIcon size={20} color="#fff" />
           </div>
+          {micError && <div className="search-mic-error search-mic-error-tv">{micError}</div>}
           <div className={`search-tv-input ${inResults ? "muted-border" : ""}`}>
             <span className={query.length === 0 ? "placeholder" : ""}>
               {query.length === 0 ? "Type to search channels..." : query}

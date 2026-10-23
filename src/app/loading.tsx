@@ -61,17 +61,12 @@ export default function Loading() {
         </div>
         <div className="grid-scroll">
           <div
-            className="channel-grid channel-grid-skeleton"
-            style={{ gridTemplateColumns: "repeat(4, 180px)" }}
+            className="channel-grid channel-grid-skeleton initial-channel-skeleton-grid"
             aria-label="Loading channels"
           >
             {Array.from({ length: 12 }, (_, i) => (
-              <div
-                key={i}
-                className="channel-skeleton"
-                style={{ width: 180, height: 140 }}
-              >
-                <div className="skeleton-icon" style={{ width: 158, height: 82 }} />
+              <div key={i} className="channel-skeleton">
+                <div className="skeleton-icon" />
                 <div className="skeleton-label" />
               </div>
             ))}

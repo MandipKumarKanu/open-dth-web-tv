@@ -107,6 +107,7 @@ export function HomeScreen({
   const switchTimerRef = useRef<number | null>(null);
   const okTimerRef = useRef<number | null>(null);
   const okTriggeredRef = useRef(false);
+  const historyReadyRef = useRef(false);
 
   useEffect(() => {
     zoneRef.current = zone;
@@ -123,6 +124,40 @@ export function HomeScreen({
   useEffect(() => {
     sideIndexRef.current = sideIndex;
   }, [sideIndex]);
+
+  useEffect(() => {
+    const state = window.history.state;
+    if (!state?.openDthApp || state.screen !== "home") {
+      window.history.replaceState(
+        { openDthApp: true, screen: "home", category: 0 },
+        "",
+        window.location.href
+      );
+    }
+    historyReadyRef.current = true;
+
+    const onPopState = (event: PopStateEvent) => {
+      const next = event.state;
+      if (!next?.openDthApp || next.screen !== "home") return;
+      if (next.search) {
+        setSearchOpen(true);
+        return;
+      }
+      setSearchOpen(false);
+      if (typeof next.category === "number") {
+        setSelected(next.category);
+        selectedRef.current = next.category;
+        setSideIndex(next.category);
+        sideIndexRef.current = next.category;
+        setTileIndex(0);
+        tileIndexRef.current = 0;
+        setZone("side");
+        gridRef.current?.scrollTo({ top: 0 });
+      }
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   // ------------------------------------------------ responsive layout
   useLayoutEffect(() => {
@@ -295,15 +330,33 @@ export function HomeScreen({
     [current.length, scrollToTile]
   );
 
-  const selectSide = useCallback((i: number) => {
+  const selectSide = useCallback((i: number, recordHistory = true) => {
     if (i < 0 || i >= categoriesRef.current.length) return;
     if (i === selectedRef.current) return;
+    if (recordHistory && historyReadyRef.current) {
+      window.history.pushState(
+        { openDthApp: true, screen: "home", category: i },
+        "",
+        window.location.href
+      );
+    }
     setSelected(i);
     setTileIndex(0);
     tileIndexRef.current = 0;
     selectedRef.current = i;
     gridRef.current?.scrollTo({ top: 0 });
   }, []);
+
+  const openSearch = useCallback(() => {
+    if (!searchOpen && historyReadyRef.current) {
+      window.history.pushState(
+        { openDthApp: true, screen: "home", search: true, category: selectedRef.current },
+        "",
+        window.location.href
+      );
+    }
+    setSearchOpen(true);
+  }, [searchOpen]);
 
   // ------------------------------------------------ keyboard
   const queuedSide = useCallback(
@@ -327,7 +380,7 @@ export function HomeScreen({
 
       if (e.code === "F5") {
         e.preventDefault();
-        setSearchOpen(true);
+        openSearch();
         return;
       }
       if (z === "search") {
@@ -338,7 +391,7 @@ export function HomeScreen({
           sideIndexRef.current = 0;
         } else if (k === "ArrowRight" || isSelect) {
           e.preventDefault();
-          setSearchOpen(true);
+          openSearch();
         }
         return;
       }
@@ -498,6 +551,7 @@ export function HomeScreen({
     play,
     toggleFav,
     queuedSide,
+    openSearch,
     languageDialogOpen,
     searchOpen,
   ]);
@@ -513,7 +567,7 @@ export function HomeScreen({
   // ------------------------------------------------ render helpers
 
   const gridBody = () => {
-    if (loading && !channels) {
+    if (loading || !channels || (channels.length > 0 && categories.length === 0)) {
       return (
         <div
           className="channel-grid channel-grid-skeleton"
@@ -533,8 +587,11 @@ export function HomeScreen({
         </div>
       );
     }
-    if (error && !categories.length) {
+    if (error && !channels) {
       return <div className="center-empty">{error}</div>;
+    }
+    if (channels.length === 0) {
+      return <div className="center-empty">No channels available</div>;
     }
     if (cat === "Favorites" && current.length === 0) {
       return (
@@ -679,7 +736,7 @@ export function HomeScreen({
       <button
         type="button"
         className={`search-tile ${zone === "search" ? "focused" : ""}`}
-        onClick={() => setSearchOpen(true)}
+        onClick={openSearch}
         onMouseEnter={() => setZone("search")}
       >
         <Search size={18} color={zone === "search" ? "#000" : "#38bdf8"} />
@@ -700,7 +757,11 @@ export function HomeScreen({
               setSideIndex(i);
               selectSide(i);
             }}
-            onMouseEnter={() => queuedSide(i)}
+            onMouseEnter={() => {
+              setZone("side");
+              setSideIndex(i);
+              sideIndexRef.current = i;
+            }}
           >
             <span
               className={`si-icon ${iconClass(label, zone === "side" && sideIndex === i, selected === i)}`}
@@ -744,7 +805,7 @@ export function HomeScreen({
               <Tv size={20} color="#fff" />
             </div>
             <span className="mobile-topbar-title">Open DTH</span>
-            <button type="button" className="mobile-search-btn" onClick={() => setSearchOpen(true)}>
+            <button type="button" className="mobile-search-btn" onClick={openSearch}>
               <Search size={20} />
             </button>
           </div>

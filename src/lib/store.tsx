@@ -81,6 +81,10 @@ interface Store {
 
 const StoreContext = createContext<Store | null>(null);
 
+export function buildReminderId(channelKey: string, p: Program) {
+  return `${channelKey}_${p.title}_${p.start.getTime()}`;
+}
+
 function readJson<T>(key: string): T | null {
   try {
     const raw = localStorage.getItem(key);
@@ -96,10 +100,6 @@ function writeJson(key: string, value: unknown) {
   } catch {
     /* ignore quota / private-mode errors */
   }
-}
-
-export function buildReminderId(channelKey: string, p: Program) {
-  return `${channelKey}_${p.title}_${p.start.getTime()}`;
 }
 
 export function StoreProvider({
@@ -169,7 +169,6 @@ export function StoreProvider({
 
   // ------------------------------------------------ channels
   // If the server already provided channels, skip the client-side fetch.
-  // Otherwise fall back to the cached file + background refresh (existing behaviour).
   useEffect(() => {
     if (initialChannels) return;
     let cancelled = false;
@@ -180,24 +179,31 @@ export function StoreProvider({
         const list = cached
           .filter((j): j is Record<string, unknown> => typeof j === "object" && j !== null)
           .map((j) => storedChannelToChannel(j as never));
-        setChannels(list);
-        setLoading(false);
+        if (list.length > 0) {
+          setChannels(list);
+          setLoading(false);
+          return;
+        }
       }
-      // 2) fresh list in the background
+
+      // Fetch only when there is no usable local cache.
       try {
         const res = await fetch("/api/channels");
         if (!res.ok) throw new Error("Failed to load channels");
-        const body = (await res.json()) as unknown[];
+        const body = (await res.json()) as unknown;
         if (cancelled) return;
         if (!Array.isArray(body) || body.length === 0) throw new Error("No channels found");
-        const fresh = body.map((j) => storedChannelToChannel(j as never));
+        const fresh = body
+          .filter((j): j is Record<string, unknown> => typeof j === "object" && j !== null)
+          .map((j) => storedChannelToChannel(j as never));
+        if (fresh.length === 0) throw new Error("No valid channels found");
         writeJson("channels_v4.json", body);
         setChannels(fresh);
         setError(null);
-      } catch {
-        if (!cancelled && !channels) {
+      } catch (cause) {
+        if (!cancelled && !cached) {
           setLoading(false);
-          setError("Could not load channels. Check the internet connection.");
+          setError(cause instanceof Error ? cause.message : "Could not load channels. Check the internet connection.");
         }
       } finally {
         if (!cancelled) setLoading(false);
