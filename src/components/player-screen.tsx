@@ -323,6 +323,10 @@ export function PlayerScreen({
           setAudioTracks(data.audioTracks.map((t) => ({ id: String(t.id), lang: t.lang ?? "", name: t.name ?? "" })));
           setSelectedAudioTrackId(String(hls.audioTrack));
         });
+        hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, (_e, data) => {
+          if (gen !== genRef.current) return;
+          setSelectedAudioTrackId(String(data.id));
+        });
         hls.on(Hls.Events.ERROR, (_e, data) => {
           if (gen !== genRef.current) return;
           if (!data.fatal) {
@@ -668,14 +672,16 @@ export function PlayerScreen({
     (trackId: string) => {
       const hls = hlsRef.current;
       if (!hls) return;
-      hls.audioTrack = Number(trackId);
+      const requestedTrack = Number(trackId);
       const track = audioTracks.find((t) => t.id === trackId);
+      if (!Number.isInteger(requestedTrack) || requestedTrack < 0 || requestedTrack >= hls.audioTracks.length) {
+        showQualityNotice("Unable to switch audio track");
+        return;
+      }
+      hls.audioTrack = requestedTrack;
       if (track?.lang) setPreferredAudioLanguage(track.lang);
-      setSelectedAudioTrackId(trackId);
       setAudioDialogOpen(false);
-      showQualityNotice(
-        `Audio: ${hls.audioTracks[Number(trackId)]?.name ?? track?.name ?? ""} · Saved as preferred`
-      );
+      showQualityNotice(`Switching audio to ${track?.name || track?.lang || `Track ${requestedTrack + 1}`}…`);
     },
     [audioTracks, setPreferredAudioLanguage, showQualityNotice]
   );
