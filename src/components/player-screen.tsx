@@ -110,6 +110,13 @@ export function PlayerScreen({
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
+  // Audio-language preference to apply when the next Hls instance is created.
+  // Used as a fallback when an in-place audio-track switch doesn't take effect.
+  const pendingAudioPrefRef = useRef<{ language?: string; name?: string } | null>(null);
+  // Watchdog: set when the user picks an audio track; cleared when hls.js
+  // confirms the switch (AUDIO_TRACK_SWITCHED). If it survives, we restart
+  // the stream with audioPreference to force the requested language.
+  const audioSwitchConfirmRef = useRef<{ id: number; confirmed: boolean; timer: number } | null>(null);
   const genRef = useRef(0);
   const retryCountRef = useRef(0);
   const retryTimerRef = useRef<number | null>(null);
@@ -248,6 +255,10 @@ export function PlayerScreen({
       setPlaying(false);
       setAudioTracks([]);
       setSelectedAudioTrackId("");
+      if (audioSwitchConfirmRef.current) {
+        window.clearTimeout(audioSwitchConfirmRef.current.timer);
+        audioSwitchConfirmRef.current = null;
+      }
       flashInfo();
 
       const url = urls[si];
@@ -272,11 +283,14 @@ export function PlayerScreen({
       video.pause();
 
       if (Hls.isSupported()) {
+        const audioPref = pendingAudioPrefRef.current;
+        pendingAudioPrefRef.current = null;
         const hls = new Hls({
           liveDurationInfinity: true,
           backBufferLength: 30,
           maxBufferLength: 18,
           manifestLoadingTimeOut: START_TIMEOUT_MS,
+          ...(audioPref ? { audioPreference: audioPref } : {}),
         });
         hlsRef.current = hls;
         hls.loadSource(url);
@@ -325,6 +339,10 @@ export function PlayerScreen({
         });
         hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, (_e, data) => {
           if (gen !== genRef.current) return;
+          if (audioSwitchConfirmRef.current?.id === data.id) {
+            window.clearTimeout(audioSwitchConfirmRef.current.timer);
+            audioSwitchConfirmRef.current.confirmed = true;
+          }
           setSelectedAudioTrackId(String(data.id));
         });
         hls.on(Hls.Events.ERROR, (_e, data) => {
@@ -679,11 +697,33 @@ export function PlayerScreen({
         return;
       }
       hls.audioTrack = requestedTrack;
+      // Watchdog: if hls.js never confirms the in-place switch
+      // (AUDIO_TRACK_SWITCHED for this id), restart the stream pre-configured
+      // with audioPreference so it comes up tuned to the requested language.
+      const switchLang = audioTracks[requestedTrack]?.lang || "";
+      const switchName = audioTracks[requestedTrack]?.name || "";
+      if (audioSwitchConfirmRef.current) {
+        window.clearTimeout(audioSwitchConfirmRef.current.timer);
+      }
+      const confirmTimer = window.setTimeout(() => {
+        const watch = audioSwitchConfirmRef.current;
+        audioSwitchConfirmRef.current = null;
+        if (!watch || watch.confirmed) return;
+        pendingAudioPrefRef.current = {
+          ...(switchLang ? { language: switchLang } : {}),
+          ...(switchName ? { name: switchName } : {}),
+        };
+        showQualityNotice(
+          `Restarting stream for audio: ${switchName || switchLang || `Track ${requestedTrack + 1}`}…`
+        );
+        open(true);
+      }, 6000);
+      audioSwitchConfirmRef.current = { id: requestedTrack, confirmed: false, timer: confirmTimer };
       if (track?.lang) setPreferredAudioLanguage(track.lang);
       setAudioDialogOpen(false);
       showQualityNotice(`Switching audio to ${track?.name || track?.lang || `Track ${requestedTrack + 1}`}…`);
     },
-    [audioTracks, setPreferredAudioLanguage, showQualityNotice]
+    [audioTracks, open, setPreferredAudioLanguage, showQualityNotice]
   );
 
   const togglePlayerOrientation = useCallback(async () => {
